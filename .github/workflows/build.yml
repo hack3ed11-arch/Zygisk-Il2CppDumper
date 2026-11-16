@@ -1,0 +1,72 @@
+name: Build Zygisk module
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_name:
+        description: 'GamePackageName (安装后的包名)'
+        required: true
+        default: 'com.leiting.xian'
+      unity_version:
+        description: 'UnityVersion (必须是 module/src/main/cpp/il2cppapi 下的目录名)'
+        required: true
+        default: '2021.2.0f1'
+      above_2018_3:
+        description: 'Unity >= 2018.3 (yes/no)'
+        required: true
+        default: 'yes'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;25.1.8937393" "cmake;3.18.1" > /dev/null
+          echo "NDK at $ANDROID_HOME/ndk/25.1.8937393"
+
+      - name: Patch game.h
+        env:
+          PKG: ${{ inputs.package_name }}
+          UV: ${{ inputs.unity_version }}
+          A2018: ${{ inputs.above_2018_3 }}
+        run: |
+          set -eu
+          F=module/src/main/cpp/game.h
+          if [ ! -d "module/src/main/cpp/il2cppapi/$UV" ]; then
+            echo "::error::il2cppapi/$UV 不存在，可用版本："
+            ls module/src/main/cpp/il2cppapi | tr '\n' ' '
+            exit 1
+          fi
+          sed -i -E "s|^#define GamePackageName .*|#define GamePackageName \"$PKG\"|" "$F"
+          sed -i -E "s|^#define UnityVersion .*|#define UnityVersion $UV|" "$F"
+          if [ "$A2018" = "yes" ]; then
+            sed -i -E "s|^// *#define VersionAbove2018dot3|#define VersionAbove2018dot3|" "$F"
+          else
+            sed -i -E "s|^#define VersionAbove2018dot3|// #define VersionAbove2018dot3|" "$F"
+          fi
+          echo '--- game.h ---'; grep -nE '^#define|^// *#define|^ *//.*define' "$F"
+
+      - name: Build release
+        run: |
+          chmod +x gradlew
+          ./gradlew :module:assembleRelease --no-daemon --stacktrace
+
+      - name: Show output
+        run: ls -la out/*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zygisk-il2cppdumper-release
+          path: out/*.zip
+          if-no-files-found: error
