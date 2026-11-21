@@ -31,7 +31,7 @@ jobs:
       # sdkmanager (cmdline-tools 16) 要求 JDK 17；Gradle 7.1.1 + AGP 4.2.2 只能用 JDK 11。
       # 所以先用 17 装 SDK 组件，再切回 11 编译。
       - name: JDK 17 (for sdkmanager)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
